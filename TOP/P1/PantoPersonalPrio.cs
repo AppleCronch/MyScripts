@@ -21,7 +21,7 @@ using static Splatoon.Splatoon;
 
 namespace SplatoonScriptsOfficial.Duties.Endwalker.The_Omega_Protocol;
 
-public class P1_Pantokrator_Priority : SplatoonScript
+public class P1_Pantokrator_Personal_Priority : SplatoonScript
 {
     #region Metadata
 
@@ -215,7 +215,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
 
     public override void OnDirectorUpdate(DirectorUpdateCategory category)
     {
-        if(category.EqualsAny(DirectorUpdateCategory.Commence, DirectorUpdateCategory.Recommence, DirectorUpdateCategory.Wipe))
+        if (category.EqualsAny(DirectorUpdateCategory.Commence, DirectorUpdateCategory.Recommence, DirectorUpdateCategory.Wipe))
         {
             ResetAll();
         }
@@ -223,21 +223,21 @@ public class P1_Pantokrator_Priority : SplatoonScript
 
     public override void OnActionEffectEvent(ActionEffectSet set)
     {
-        if(set.Action == null)
+        if (set.Action == null)
         {
             return;
         }
 
         var id = set.Action.Value.RowId;
-        if(id is CastFireFirst or CastFireSecond)
+        if (id is CastFireFirst or CastFireSecond)
         {
             _pantokratorInfo.FireCountRaw++;
         }
 
-        if(id == CastWaveCannon && _isPantokrator)
+        if (id == CastWaveCannon && _isPantokrator)
         {
             _waveCannonEffectCount++;
-            if(_waveCannonEffectCount >= WaveCannonEffectCountToEnd)
+            if (_waveCannonEffectCount >= WaveCannonEffectCountToEnd)
             {
                 _isPantokrator = false;
             }
@@ -248,28 +248,28 @@ public class P1_Pantokrator_Priority : SplatoonScript
     {
         var castId = packet->ActionID;
 
-        if(castId == CastPantokrator)
+        if (castId == CastPantokrator)
         {
             BeginPantokrator();
             return;
         }
 
         var angle = SnapCastAngle(packet);
-        if(castId == CastFireFirst)
+        if (castId == CastFireFirst)
         {
             // JP/ELE cone check needs the raw facing, not the 30Â°-grid-snapped one.
-            if(_pantokratorInfo.FirstFireRawAngles.Count < 2)
+            if (_pantokratorInfo.FirstFireRawAngles.Count < 2)
             {
                 _pantokratorInfo.FirstFireRawAngles.Add(NormalizeAngle(packet->RotationFromNorth.RadToDeg()));
             }
 
-            if(_pantokratorInfo.FirstFireAngles.Count < 2)
+            if (_pantokratorInfo.FirstFireAngles.Count < 2)
             {
                 _pantokratorInfo.FirstFireAngles.Add(angle);
                 _pantokratorInfo.FirstFireAngles.Sort();
             }
         }
-        else if(castId == CastFireSecond && _pantokratorInfo.SecondFireAngles.Count < 2)
+        else if (castId == CastFireSecond && _pantokratorInfo.SecondFireAngles.Count < 2)
         {
             _pantokratorInfo.SecondFireAngles.Add(angle);
             _pantokratorInfo.SecondFireAngles.Sort();
@@ -281,24 +281,24 @@ public class P1_Pantokrator_Priority : SplatoonScript
     {
         DisableNaviElement();
 
-        if(Controller.Scene != ScenePantokrator || !_isPantokrator)
+        if (Controller.Scene != ScenePantokrator || !_isPantokrator)
         {
             return;
         }
 
         var fireCount = new FireCount(_pantokratorInfo.FireCountRaw);
 
-        if(TryApplyWaveCannonSpreadNavi())
+        if (TryApplyWaveCannonSpreadNavi())
         {
             return;
         }
 
-        if(TryApplyPreSpreadNavi(fireCount))
+        if (TryApplyPreSpreadNavi(fireCount))
         {
             return;
         }
 
-        if(fireCount.Raw > RawFireMaxForAngle)
+        if (fireCount.Raw > RawFireMaxForAngle)
         {
             return;
         }
@@ -363,7 +363,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     private bool TryApplyWaveCannonSpreadNavi()
     {
         var fireCount = new FireCount(_pantokratorInfo.FireCountRaw);
-        if(!fireCount.IsLogical(LogicalFireWaveCannonSpread))
+        if (!fireCount.IsLogical(LogicalFireWaveCannonSpread))
         {
             return false;
         }
@@ -376,7 +376,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // Pre-spread navi at logical fire 0 when roster is ready.
     private bool TryApplyPreSpreadNavi(FireCount fireCount)
     {
-        if(!fireCount.IsLogical(0))
+        if (!fireCount.IsLogical(0))
         {
             return false;
         }
@@ -385,7 +385,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
         ResolveCurrentPlayer();
         ResolveInitAngle();
 
-        if(_playerInfo == null)
+        if (_playerInfo == null)
         {
             return true;
         }
@@ -403,7 +403,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
         ResolveInitAngle();
         ComputeRotate();
 
-        if(_playerInfo == null)
+        if (_playerInfo == null)
         {
             return;
         }
@@ -415,38 +415,38 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // When 8 players have Kyrios markers, build roster once and lock until reset.
     private void BuildPlayerInfos()
     {
-        if(_playerInfosLocked)
+        if (_playerInfosLocked)
         {
             return;
         }
 
         var playersWithMarker = new List<(IPlayerCharacter Player, uint StatusId, byte Param)>();
-        foreach(var pc in Svc.Objects.OfType<IPlayerCharacter>())
+        foreach (var pc in Svc.Objects.OfType<IPlayerCharacter>())
         {
-            if(pc.IsDead || pc.CurrentHp <= 0)
+            if (pc.IsDead || pc.CurrentHp <= 0)
             {
                 continue;
             }
 
-            if(TryGetKyriosMarker(pc, out var statusId, out var param))
+            if (TryGetKyriosMarker(pc, out var statusId, out var param))
             {
                 playersWithMarker.Add((pc, statusId, param));
             }
         }
 
-        if(playersWithMarker.Count != PartySize)
+        if (playersWithMarker.Count != PartySize)
         {
             return;
         }
 
         var byStatus = playersWithMarker.GroupBy(x => x.StatusId).ToList();
-        if(byStatus.Count != 4 || byStatus.Any(g => g.Count() != 2))
+        if (byStatus.Count != 4 || byStatus.Any(g => g.Count() != 2))
         {
             return;
         }
 
         var built = new List<PlayerInfo>(PartySize);
-        foreach(var group in byStatus)
+        foreach (var group in byStatus)
         {
             var targetStatusId = group.Key;
             var members = group.ToArray();
@@ -476,7 +476,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
             });
         }
 
-        if(built.Count != PartySize)
+        if (built.Count != PartySize)
         {
             return;
         }
@@ -489,12 +489,12 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // Tank: North + Outside. Other: selectable direction (not North) + Inside.
     private WaveCannonSpreadDirection GetEffectiveWaveCannonSpreadDirection()
     {
-        if(C.WaveCannonSpreadIsTank)
+        if (C.WaveCannonSpreadIsTank)
         {
             return WaveCannonSpreadDirection.North;
         }
 
-        if(C.WaveCannonSpreadDirection == WaveCannonSpreadDirection.North)
+        if (C.WaveCannonSpreadDirection == WaveCannonSpreadDirection.North)
         {
             return WaveCannonSpreadDirectionsOther[0];
         }
@@ -507,11 +507,11 @@ public class P1_Pantokrator_Priority : SplatoonScript
     {
         ImGui.Text("Pre-spread strategy");
         ImGui.SetNextItemWidth(150f);
-        if(ImGui.BeginCombo("##preSpreadStrategy", C.Strategy.ToString()))
+        if (ImGui.BeginCombo("##preSpreadStrategy", C.Strategy.ToString()))
         {
-            foreach(PreSpreadStrategy strategy in Enum.GetValues<PreSpreadStrategy>())
+            foreach (PreSpreadStrategy strategy in Enum.GetValues<PreSpreadStrategy>())
             {
-                if(ImGui.Selectable(strategy.ToString(), strategy == C.Strategy))
+                if (ImGui.Selectable(strategy.ToString(), strategy == C.Strategy))
                 {
                     C.Strategy = strategy;
                 }
@@ -520,18 +520,18 @@ public class P1_Pantokrator_Priority : SplatoonScript
             ImGui.EndCombo();
         }
 
-        if(C.Strategy != PreSpreadStrategy.JP_ELE)
+        if (C.Strategy != PreSpreadStrategy.JP_ELE)
         {
             return;
         }
 
         ImGui.Text("Split axis (Group A start; Group B always starts 180Â° opposite)");
         ImGui.SetNextItemWidth(150f);
-        if(ImGui.BeginCombo("##splitAxisDirection", C.SplitAxisDirection.ToString()))
+        if (ImGui.BeginCombo("##splitAxisDirection", C.SplitAxisDirection.ToString()))
         {
-            foreach(SplitAxisDirection direction in Enum.GetValues<SplitAxisDirection>())
+            foreach (SplitAxisDirection direction in Enum.GetValues<SplitAxisDirection>())
             {
-                if(ImGui.Selectable(direction.ToString(), direction == C.SplitAxisDirection))
+                if (ImGui.Selectable(direction.ToString(), direction == C.SplitAxisDirection))
                 {
                     C.SplitAxisDirection = direction;
                 }
@@ -547,22 +547,22 @@ public class P1_Pantokrator_Priority : SplatoonScript
         ImGuiEx.RadioButtonBool("Tank", "Other", ref C.WaveCannonSpreadIsTank, sameLine: true);
 
         ImGui.SameLine();
-        if(C.WaveCannonSpreadIsTank)
+        if (C.WaveCannonSpreadIsTank)
         {
             return;
         }
 
-        if(C.WaveCannonSpreadDirection == WaveCannonSpreadDirection.North)
+        if (C.WaveCannonSpreadDirection == WaveCannonSpreadDirection.North)
         {
             C.WaveCannonSpreadDirection = WaveCannonSpreadDirectionsOther[0];
         }
 
         ImGui.SetNextItemWidth(150f);
-        if(ImGui.BeginCombo("##waveCannonSpreadOther", C.WaveCannonSpreadDirection.ToString()))
+        if (ImGui.BeginCombo("##waveCannonSpreadOther", C.WaveCannonSpreadDirection.ToString()))
         {
-            foreach(var direction in WaveCannonSpreadDirectionsOther)
+            foreach (var direction in WaveCannonSpreadDirectionsOther)
             {
-                if(ImGui.Selectable(direction.ToString(), direction == C.WaveCannonSpreadDirection))
+                if (ImGui.Selectable(direction.ToString(), direction == C.WaveCannonSpreadDirection))
                 {
                     C.WaveCannonSpreadDirection = direction;
                 }
@@ -606,7 +606,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     {
         _playerInfo = null;
         var self = BasePlayer;
-        if(self == null || _playerInfos.Count == 0)
+        if (self == null || _playerInfos.Count == 0)
         {
             return;
         }
@@ -619,7 +619,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // everything downstream (ComputeRotate, GetAngle, IsBait) is shared and untouched.
     private void ResolveInitAngle()
     {
-        if(C.Strategy == PreSpreadStrategy.JP_ELE)
+        if (C.Strategy == PreSpreadStrategy.JP_ELE)
         {
             InitAngleJpEle();
         }
@@ -632,15 +632,15 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // NAUR (original): initAngle = FirstFire + 120Â°; closer to boss reference is NorthInit, other is SouthInit.
     private void InitAngleNaur()
     {
-        if(_pantokratorInfo.FirstFireAngles.Count < 2)
+        if (_pantokratorInfo.FirstFireAngles.Count < 2)
         {
             return;
         }
 
-        if(!_pantokratorInfo.InitReferenceResolved)
+        if (!_pantokratorInfo.InitReferenceResolved)
         {
             var boss = Svc.Objects.OfType<IBattleChara>().FirstOrDefault(x => x.DataId == BossDataId);
-            if(boss == null)
+            if (boss == null)
             {
                 return;
             }
@@ -657,7 +657,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
         var posA = CalculatePointFromCenterByDegree(ArenaCenter, NaviRadius, angleA);
         var posB = CalculatePointFromCenterByDegree(ArenaCenter, NaviRadius, angleB);
 
-        if(DistanceXZ(posA, reference) <= DistanceXZ(posB, reference))
+        if (DistanceXZ(posA, reference) <= DistanceXZ(posB, reference))
         {
             _pantokratorInfo.NorthInitAngle = angleA;
             _pantokratorInfo.SouthInitAngle = angleB;
@@ -673,7 +673,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // If a starting point falls inside either first-Fire 60Â° cone, it rotates clockwise until clear.
     private void InitAngleJpEle()
     {
-        if(_pantokratorInfo.FirstFireRawAngles.Count < 2)
+        if (_pantokratorInfo.FirstFireRawAngles.Count < 2)
         {
             return;
         }
@@ -690,12 +690,12 @@ public class P1_Pantokrator_Priority : SplatoonScript
     private float ResolveClockwiseSafeAngle(float pointDeg)
     {
         var angle = pointDeg;
-        for(var i = 0; i < ClockwiseResolveMaxIterations; i++)
+        for (var i = 0; i < ClockwiseResolveMaxIterations; i++)
         {
             var moved = false;
-            foreach(var fireAngle in _pantokratorInfo.FirstFireRawAngles)
+            foreach (var fireAngle in _pantokratorInfo.FirstFireRawAngles)
             {
-                if(!AngleInCone(angle, fireAngle, ConeHalfWidthDegrees))
+                if (!AngleInCone(angle, fireAngle, ConeHalfWidthDegrees))
                 {
                     continue;
                 }
@@ -704,7 +704,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
                 moved = true;
             }
 
-            if(!moved)
+            if (!moved)
             {
                 break;
             }
@@ -717,7 +717,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     private static bool AngleInCone(float pointDeg, float coneCenterDeg, float halfWidthDeg)
     {
         var diff = NormalizeAngle(pointDeg - coneCenterDeg);
-        if(diff > 180f)
+        if (diff > 180f)
         {
             diff = 360f - diff;
         }
@@ -743,31 +743,31 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // rotate: pairwise +30 / -30 between first and second fire angle lists.
     private void ComputeRotate()
     {
-        if(_pantokratorInfo.FirstFireAngles.Count < 2)
+        if (_pantokratorInfo.FirstFireAngles.Count < 2)
         {
             return;
         }
 
-        if(_pantokratorInfo.SecondFireAngles.Count < 2)
+        if (_pantokratorInfo.SecondFireAngles.Count < 2)
         {
             return;
         }
 
-        if(_pantokratorInfo.Rotate != Rotate.None)
+        if (_pantokratorInfo.Rotate != Rotate.None)
         {
             return;
         }
 
-        foreach(var first in _pantokratorInfo.FirstFireAngles)
+        foreach (var first in _pantokratorInfo.FirstFireAngles)
         {
-            foreach(var second in _pantokratorInfo.SecondFireAngles)
+            foreach (var second in _pantokratorInfo.SecondFireAngles)
             {
-                if(NormalizeAngle(first + AngleStepDegrees) == NormalizeAngle(second))
+                if (NormalizeAngle(first + AngleStepDegrees) == NormalizeAngle(second))
                 {
                     _pantokratorInfo.Rotate = Rotate.Clockwise;
                 }
 
-                if(NormalizeAngle(first - AngleStepDegrees) == NormalizeAngle(second))
+                if (NormalizeAngle(first - AngleStepDegrees) == NormalizeAngle(second))
                 {
                     _pantokratorInfo.Rotate = Rotate.CounterClockwise;
                 }
@@ -778,7 +778,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // plan.md getAngle with NormalizeAngle on the result.
     private float GetAngle(FireCount fireCount)
     {
-        if(_playerInfo == null)
+        if (_playerInfo == null)
         {
             return 0f;
         }
@@ -797,9 +797,9 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // True when the player has any Kyrios circle-program marker.
     private static bool TryGetKyriosMarker(IPlayerCharacter player, out uint statusId, out byte param)
     {
-        foreach(var status in player.StatusList)
+        foreach (var status in player.StatusList)
         {
-            if(StatusKyriosMarkers.Contains(status.StatusId))
+            if (StatusKyriosMarkers.Contains(status.StatusId))
             {
                 statusId = status.StatusId;
                 param = (byte)status.Param;
@@ -820,15 +820,15 @@ public class P1_Pantokrator_Priority : SplatoonScript
     private int GetPriorityIndex(IPlayerCharacter player)
     {
         var priorityList = C.PriorityData.GetPlayers(_ => true)?.ToList();
-        if(priorityList == null)
+        if (priorityList == null)
         {
             return int.MaxValue;
         }
 
         var name = player.Name.ToString();
-        for(var index = 0; index < priorityList.Count; index++)
+        for (var index = 0; index < priorityList.Count; index++)
         {
-            if(priorityList[index].Name == name)
+            if (priorityList[index].Name == name)
             {
                 return index;
             }
@@ -867,7 +867,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     private static float NormalizeAngle(float deg)
     {
         deg %= 360f;
-        if(deg < 0)
+        if (deg < 0)
         {
             deg += 360f;
         }
@@ -878,7 +878,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // Disables the navi element at the start of each tick.
     private void DisableNaviElement()
     {
-        if(Controller.TryGetElementByName(ElementNavi, out var el))
+        if (Controller.TryGetElementByName(ElementNavi, out var el))
         {
             el.Enabled = false;
         }
@@ -887,7 +887,7 @@ public class P1_Pantokrator_Priority : SplatoonScript
     // Boss-relative navi rotation; color follows Splatoon Attention Color (rainbow when configured).
     private void ApplyNaviElementAt(float navDeg)
     {
-        if(!Controller.TryGetElementByName(ElementNavi, out var el))
+        if (!Controller.TryGetElementByName(ElementNavi, out var el))
         {
             return;
         }
