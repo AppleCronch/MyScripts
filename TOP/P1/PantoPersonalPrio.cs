@@ -73,10 +73,6 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
     private const float NaviRadius = 10f;
     private const float PreSpreadOffsetFromFirstFire = 120f;
 
-    // JP/ELE: flamethrower cone is 60Â° wide, i.e. Â±30Â° from its (calibrated) cast facing.
-    private const float ConeHalfWidthDegrees = 30f;
-    private const int ClockwiseResolveMaxIterations = 4;
-
     private const string ElementNavi = "PantokratorNavi";
 
     #endregion
@@ -136,7 +132,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
     }
 
     // Pre-spread strategy: NAUR = original boss-reference-point logic.
-    // JP_ELE = same two fire+120Â° spots as NAUR; only the North/South labeling differs.
+    // JP_ELE = same two fire+120° spots as NAUR; only the North/South designation differs.
     public enum PreSpreadStrategy
     {
         NAUR,
@@ -342,7 +338,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         _pantokratorInfo.FireCountRaw = 0;
     }
 
-    // Snaps cast facing to the plan 30Â° grid (cast angle - 30).
+    // Snaps cast facing to the plan 30° grid (cast angle - 30).
     private unsafe float SnapCastAngle(PacketActorCast* packet)
     {
         return NormalizeAngle(SnapDegToStep(packet->RotationFromNorth.RadToDeg(), AngleSnapOffsetDegrees, AngleStepDegrees));
@@ -384,7 +380,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         return true;
     }
 
-    // Fire phase navi via getAngle (logical 1â€“13).
+    // Fire phase navi via getAngle (logical 1–13).
     private void TryApplyFirePhaseNavi(FireCount fireCount)
     {
         BuildPlayerInfos();
@@ -491,7 +487,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         return C.WaveCannonSpreadDirection;
     }
 
-    // Strategy selector: NAUR (original) vs JP/ELE (same two spots, axis-based labeling), plus axis picker.
+    // Strategy selector: NAUR (original) vs JP/ELE (same two spots, axis-based designation), plus axis picker.
     private void DrawStrategySettings()
     {
         ImGui.Text("Pre-spread strategy");
@@ -650,7 +646,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
             _ => 0f,
         };
 
-    // isBait: logical fire bands 1â€“3 / 4â€“6 / 7â€“9 / 10â€“12 per target status.
+    // isBait: logical fire bands 1–3 / 4–6 / 7–9 / 10–12 per target status.
     private static bool IsBait(FireCount fireCount, uint targetStatusId)
         => fireCount.Logical switch
         {
@@ -675,8 +671,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         _playerInfo = _playerInfos.FirstOrDefault(x => x.Name == name);
     }
 
-    // Dispatches to the configured pre-spread strategy. Only the North/South labeling of the two spots
-    // differs between strategies; ComputeRotate, GetAngle, and IsBait are shared and untouched.
+    // Dispatches to the configured pre-spread strategy. Only designation (North/South) differs between strategies.
     private void ResolveInitAngle()
     {
         if (C.Strategy == PreSpreadStrategy.JP_ELE)
@@ -689,7 +684,7 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         }
     }
 
-    // NAUR (original): initAngle = FirstFire + 120Â°; closer to boss reference is NorthInit, other is SouthInit.
+    // NAUR (original): initAngle = FirstFire + 120°; closer to boss reference is NorthInit, other is SouthInit.
     private void InitAngleNaur()
     {
         if (_pantokratorInfo.FirstFireAngles.Count < 2)
@@ -729,11 +724,10 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         }
     }
 
-    // JP/ELE: the two candidate spots are IDENTICAL to NAUR (FirstFire + 120Â°) - no new positions are
-    // ever introduced. The only thing that differs is which spot is labeled North vs South: whichever
-    // spot is angularly closer to the configured axis becomes North, the other South. The axis itself is
-    // nudged clockwise off any first-Fire cone it happens to sit inside, so the labeling stays well-defined
-    // even when the cone crosses the axis line - it never changes the two output angles themselves.
+    // JP/ELE: Candidate spots are identical to NAUR (FirstFire + 120°).
+    // Designation depends on which 180° sector (starting from FirstFireAngles[0]) the split axis falls into.
+    // FirstFireAngles[0] is the counter-clockwise edge of Cone 1; [FirstFireAngles[0], FirstFireAngles[0] + 180°)
+    // covers Cone 1 and its clockwise safe area.
     private void InitAngleJpEle()
     {
         if (_pantokratorInfo.FirstFireAngles.Count < 2)
@@ -744,9 +738,10 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
         var angleA = NormalizeAngle(_pantokratorInfo.FirstFireAngles[0] + PreSpreadOffsetFromFirstFire);
         var angleB = NormalizeAngle(_pantokratorInfo.FirstFireAngles[1] + PreSpreadOffsetFromFirstFire);
 
-        var axisAngle = ResolveClockwiseSafeAngle(GetSplitAxisAngle(C.SplitAxisDirection));
+        var axisAngle = GetSplitAxisAngle(C.SplitAxisDirection);
+        var diff = NormalizeAngle(axisAngle - _pantokratorInfo.FirstFireAngles[0]);
 
-        if (AngularDistance(angleA, axisAngle) <= AngularDistance(angleB, axisAngle))
+        if (diff < 180f)
         {
             _pantokratorInfo.NorthInitAngle = angleA;
             _pantokratorInfo.SouthInitAngle = angleB;
@@ -756,46 +751,6 @@ public class P1_Pantokrator_Priority_Personal : SplatoonScript
             _pantokratorInfo.NorthInitAngle = angleB;
             _pantokratorInfo.SouthInitAngle = angleA;
         }
-    }
-
-    // Rotates a labeling reference point clockwise off any first-Fire cone it falls inside, landing on
-    // that cone's clockwise edge. This never touches NorthInitAngle/SouthInitAngle directly - it only
-    // feeds the proximity check in InitAngleJpEle.
-    private float ResolveClockwiseSafeAngle(float pointDeg)
-    {
-        var angle = pointDeg;
-        for (var i = 0; i < ClockwiseResolveMaxIterations; i++)
-        {
-            var moved = false;
-            foreach (var fireAngle in _pantokratorInfo.FirstFireAngles)
-            {
-                if (!AngleInCone(angle, fireAngle, ConeHalfWidthDegrees))
-                {
-                    continue;
-                }
-
-                angle = NormalizeAngle(fireAngle + ConeHalfWidthDegrees);
-                moved = true;
-            }
-
-            if (!moved)
-            {
-                break;
-            }
-        }
-
-        return angle;
-    }
-
-    // True when pointDeg is within halfWidthDeg of coneCenterDeg (shortest angular distance).
-    private static bool AngleInCone(float pointDeg, float coneCenterDeg, float halfWidthDeg)
-        => AngularDistance(pointDeg, coneCenterDeg) <= halfWidthDeg;
-
-    // Shortest angular distance between two compass degrees, in [0, 180].
-    private static float AngularDistance(float a, float b)
-    {
-        var diff = NormalizeAngle(a - b);
-        return diff > 180f ? 360f - diff : diff;
     }
 
     // Compass degrees (North = 0, clockwise) for each JP/ELE split axis option.
