@@ -21,11 +21,11 @@ using static Splatoon.Splatoon;
 
 namespace SplatoonScriptsOfficial.Duties.Endwalker.The_Omega_Protocol;
 
-public class P1_Pantokrator_Personal_Priority : SplatoonScript
+public class P1_Pantokrator_Priority_Personal : SplatoonScript
 {
     #region Metadata
 
-    public override Metadata Metadata => new(2, "mirage");
+    public override Metadata Metadata => new(2, "applecronch");
     public override HashSet<uint> ValidTerritories => [TerritoryTop];
 
     #endregion
@@ -73,7 +73,7 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
     private const float NaviRadius = 10f;
     private const float PreSpreadOffsetFromFirstFire = 120f;
 
-    // JP/ELE: flamethrower cone is 60Â° wide, i.e. Â±30Â° from its raw cast facing.
+    // JP/ELE: flamethrower cone is 60Â° wide, i.e. Â±30Â° from its (calibrated) cast facing.
     private const float ConeHalfWidthDegrees = 30f;
     private const int ClockwiseResolveMaxIterations = 4;
 
@@ -92,6 +92,8 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         public SplitAxisDirection SplitAxisDirection = SplitAxisDirection.NorthWest;
         public WaveCannonSpreadDirection WaveCannonSpreadDirection = WaveCannonSpreadDirection.North;
         public bool WaveCannonSpreadIsTank = true;
+        public bool DebugShowSelfGroup = false;
+        public bool DebugShowAllPlayerGroups = false;
     }
 
     #endregion
@@ -134,14 +136,14 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
     }
 
     // Pre-spread strategy: NAUR = original boss-reference-point logic.
-    // JP_ELE = fixed compass split axis, rotated clockwise off the first Fire cone if it intersects.
+    // JP_ELE = same two fire+120Â° spots as NAUR; only the North/South labeling differs.
     public enum PreSpreadStrategy
     {
         NAUR,
         JP_ELE,
     }
 
-    // Compass direction for JP/ELE's Group A starting point (Group B always starts 180Â° opposite).
+    // JP/ELE: compass reference axis used to label the two spots (Group A = axis side, Group B = opposite).
     public enum SplitAxisDirection
     {
         North,
@@ -189,10 +191,6 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
     {
         public readonly List<float> FirstFireAngles = [];
         public readonly List<float> SecondFireAngles = [];
-
-        // JP/ELE: raw (un-snapped, un-offset) first Fire cast facings, used as cone centers.
-        public readonly List<float> FirstFireRawAngles = [];
-
         public float NorthInitAngle;
         public float SouthInitAngle;
         public Vector3 InitReferencePoint;
@@ -255,19 +253,10 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         }
 
         var angle = SnapCastAngle(packet);
-        if (castId == CastFireFirst)
+        if (castId == CastFireFirst && _pantokratorInfo.FirstFireAngles.Count < 2)
         {
-            // JP/ELE cone check needs the raw facing, not the 30Â°-grid-snapped one.
-            if (_pantokratorInfo.FirstFireRawAngles.Count < 2)
-            {
-                _pantokratorInfo.FirstFireRawAngles.Add(NormalizeAngle(packet->RotationFromNorth.RadToDeg()));
-            }
-
-            if (_pantokratorInfo.FirstFireAngles.Count < 2)
-            {
-                _pantokratorInfo.FirstFireAngles.Add(angle);
-                _pantokratorInfo.FirstFireAngles.Sort();
-            }
+            _pantokratorInfo.FirstFireAngles.Add(angle);
+            _pantokratorInfo.FirstFireAngles.Sort();
         }
         else if (castId == CastFireSecond && _pantokratorInfo.SecondFireAngles.Count < 2)
         {
@@ -315,6 +304,7 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         ImGui.NewLine();
         DrawWaveCannonSpreadSettings();
         ImGui.NewLine();
+        DrawDebugSettings();
     }
 
     #endregion
@@ -344,7 +334,6 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         _playerInfosLocked = false;
         _pantokratorInfo.FirstFireAngles.Clear();
         _pantokratorInfo.SecondFireAngles.Clear();
-        _pantokratorInfo.FirstFireRawAngles.Clear();
         _pantokratorInfo.NorthInitAngle = 0f;
         _pantokratorInfo.SouthInitAngle = 0f;
         _pantokratorInfo.InitReferencePoint = default;
@@ -502,7 +491,7 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         return C.WaveCannonSpreadDirection;
     }
 
-    // Strategy selector: NAUR (original) vs JP/ELE (fixed axis + clockwise cone dodge), plus axis picker.
+    // Strategy selector: NAUR (original) vs JP/ELE (same two spots, axis-based labeling), plus axis picker.
     private void DrawStrategySettings()
     {
         ImGui.Text("Pre-spread strategy");
@@ -525,7 +514,7 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
             return;
         }
 
-        ImGui.Text("Split axis (Group A start; Group B always starts 180Â° opposite)");
+        ImGui.Text("Split axis (Group A label; Group B is the opposite spot)");
         ImGui.SetNextItemWidth(150f);
         if (ImGui.BeginCombo("##splitAxisDirection", C.SplitAxisDirection.ToString()))
         {
@@ -572,6 +561,77 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         }
     }
 
+    // Debug: shows the resolved group/role for the local player and/or the full roster, live, in the settings window.
+    private void DrawDebugSettings()
+    {
+        ImGui.Text("Debug");
+        ImGui.Checkbox("Show my resolved group", ref C.DebugShowSelfGroup);
+        ImGui.Checkbox("Show all players' resolved groups", ref C.DebugShowAllPlayerGroups);
+
+        if (!C.DebugShowSelfGroup && !C.DebugShowAllPlayerGroups)
+        {
+            return;
+        }
+
+        if (!_playerInfosLocked)
+        {
+            ImGui.TextDisabled("Roster not resolved yet (need all 8 Kyrios markers).");
+            return;
+        }
+
+        if (C.DebugShowSelfGroup)
+        {
+            ImGui.Separator();
+            if (_playerInfo == null)
+            {
+                ImGui.TextDisabled("Could not resolve local player in roster.");
+            }
+            else
+            {
+                ImGui.Text($"You ({_playerInfo.Name}): {GetGroupLabel(_playerInfo.TargetStatusId)} - {_playerInfo.Role} - paired with {_playerInfo.PairName}");
+            }
+        }
+
+        if (C.DebugShowAllPlayerGroups)
+        {
+            ImGui.Separator();
+            if (ImGui.BeginTable("##debugAllPlayerGroups", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg))
+            {
+                ImGui.TableSetupColumn("Player");
+                ImGui.TableSetupColumn("Group");
+                ImGui.TableSetupColumn("Role");
+                ImGui.TableSetupColumn("Paired With");
+                ImGui.TableHeadersRow();
+
+                foreach (var info in _playerInfos.OrderBy(x => x.TargetStatusId).ThenBy(x => x.Role))
+                {
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    ImGui.Text(info.Name);
+                    ImGui.TableNextColumn();
+                    ImGui.Text(GetGroupLabel(info.TargetStatusId));
+                    ImGui.TableNextColumn();
+                    ImGui.Text(info.Role.ToString());
+                    ImGui.TableNextColumn();
+                    ImGui.Text(info.PairName);
+                }
+
+                ImGui.EndTable();
+            }
+        }
+    }
+
+    // Friendly label for the Kyrios marker status id (Group 1-4).
+    private static string GetGroupLabel(uint statusId)
+        => statusId switch
+        {
+            StatusFirstTarget => "Group 1",
+            StatusSecondTarget => "Group 2",
+            StatusThirdTarget => "Group 3",
+            StatusFourthTarget => "Group 4",
+            _ => "Unknown",
+        };
+
     //pre-spread angle: logical 0 North/South target param.
     private float GetPreSpreadAngle(Role role)
         => role == Role.North ? _pantokratorInfo.NorthInitAngle : _pantokratorInfo.SouthInitAngle;
@@ -615,8 +675,8 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         _playerInfo = _playerInfos.FirstOrDefault(x => x.Name == name);
     }
 
-    // Dispatches to the configured pre-spread strategy. Only the starting-angle computation differs;
-    // everything downstream (ComputeRotate, GetAngle, IsBait) is shared and untouched.
+    // Dispatches to the configured pre-spread strategy. Only the North/South labeling of the two spots
+    // differs between strategies; ComputeRotate, GetAngle, and IsBait are shared and untouched.
     private void ResolveInitAngle()
     {
         if (C.Strategy == PreSpreadStrategy.JP_ELE)
@@ -669,31 +729,45 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
         }
     }
 
-    // JP/ELE: Group A starts at the configured compass axis, Group B at the opposite point (180Â°).
-    // If a starting point falls inside either first-Fire 60Â° cone, it rotates clockwise until clear.
+    // JP/ELE: the two candidate spots are IDENTICAL to NAUR (FirstFire + 120Â°) - no new positions are
+    // ever introduced. The only thing that differs is which spot is labeled North vs South: whichever
+    // spot is angularly closer to the configured axis becomes North, the other South. The axis itself is
+    // nudged clockwise off any first-Fire cone it happens to sit inside, so the labeling stays well-defined
+    // even when the cone crosses the axis line - it never changes the two output angles themselves.
     private void InitAngleJpEle()
     {
-        if (_pantokratorInfo.FirstFireRawAngles.Count < 2)
+        if (_pantokratorInfo.FirstFireAngles.Count < 2)
         {
             return;
         }
 
-        var groupAAngle = GetSplitAxisAngle(C.SplitAxisDirection);
-        var groupBAngle = NormalizeAngle(groupAAngle + 180f);
+        var angleA = NormalizeAngle(_pantokratorInfo.FirstFireAngles[0] + PreSpreadOffsetFromFirstFire);
+        var angleB = NormalizeAngle(_pantokratorInfo.FirstFireAngles[1] + PreSpreadOffsetFromFirstFire);
 
-        _pantokratorInfo.NorthInitAngle = ResolveClockwiseSafeAngle(groupAAngle);
-        _pantokratorInfo.SouthInitAngle = ResolveClockwiseSafeAngle(groupBAngle);
+        var axisAngle = ResolveClockwiseSafeAngle(GetSplitAxisAngle(C.SplitAxisDirection));
+
+        if (AngularDistance(angleA, axisAngle) <= AngularDistance(angleB, axisAngle))
+        {
+            _pantokratorInfo.NorthInitAngle = angleA;
+            _pantokratorInfo.SouthInitAngle = angleB;
+        }
+        else
+        {
+            _pantokratorInfo.NorthInitAngle = angleB;
+            _pantokratorInfo.SouthInitAngle = angleA;
+        }
     }
 
-    // Rotates a starting point clockwise (increasing degrees) off any first-Fire cone it falls inside,
-    // landing on that cone's clockwise edge. Loops in case that edge still overlaps another cone.
+    // Rotates a labeling reference point clockwise off any first-Fire cone it falls inside, landing on
+    // that cone's clockwise edge. This never touches NorthInitAngle/SouthInitAngle directly - it only
+    // feeds the proximity check in InitAngleJpEle.
     private float ResolveClockwiseSafeAngle(float pointDeg)
     {
         var angle = pointDeg;
         for (var i = 0; i < ClockwiseResolveMaxIterations; i++)
         {
             var moved = false;
-            foreach (var fireAngle in _pantokratorInfo.FirstFireRawAngles)
+            foreach (var fireAngle in _pantokratorInfo.FirstFireAngles)
             {
                 if (!AngleInCone(angle, fireAngle, ConeHalfWidthDegrees))
                 {
@@ -715,14 +789,13 @@ public class P1_Pantokrator_Personal_Priority : SplatoonScript
 
     // True when pointDeg is within halfWidthDeg of coneCenterDeg (shortest angular distance).
     private static bool AngleInCone(float pointDeg, float coneCenterDeg, float halfWidthDeg)
-    {
-        var diff = NormalizeAngle(pointDeg - coneCenterDeg);
-        if (diff > 180f)
-        {
-            diff = 360f - diff;
-        }
+        => AngularDistance(pointDeg, coneCenterDeg) <= halfWidthDeg;
 
-        return diff <= halfWidthDeg;
+    // Shortest angular distance between two compass degrees, in [0, 180].
+    private static float AngularDistance(float a, float b)
+    {
+        var diff = NormalizeAngle(a - b);
+        return diff > 180f ? 360f - diff : diff;
     }
 
     // Compass degrees (North = 0, clockwise) for each JP/ELE split axis option.
